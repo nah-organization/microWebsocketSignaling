@@ -76,7 +76,6 @@ const websocketSender = (client: WebSocket) => <T extends keyof api['down']>(typ
 };
 
 export function websocketMain(websocketClient: WebSocket, req: IncomingMessage) {
-
     const url = new URL(req.url ?? '/', 'http://localhost/');
     const target = url.pathname.slice(1).split('/');
 
