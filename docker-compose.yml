@@ -1,0 +1,10 @@
+version: "3.7"
+
+services:
+  app:
+    build: .
+    environment:
+      - MICRO_WEBSOCKET_TOP_REDIRECT
+    volumes:
+      - $MICRO_WEBSOCKET_SOCKET_DIRECTORY_PATH:/socket/
+    restart: always
