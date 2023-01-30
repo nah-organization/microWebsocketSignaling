@@ -39,13 +39,15 @@ export function main(req: { url?: string; }, res: {
     end(value: string): void,
     writeHead(status: number, header: OutgoingHttpHeaders): void;
 }) {
+    console.log('accessed: ', req.url);
     const url = new URL(req.url ?? '/', 'http://localhost/');
     const target = url.pathname.slice(1).split('/');
-    if (target.length === 0) {
+    if (target.length === 1 && target[0] === '') {
         res.writeHead(302, {
             'Location': topRedirect
         });
         res.end(`See: ${topRedirect}`);
+        console.log('redirect');
         return;
     }
     if (target.length === 1 && target[0]) {
@@ -57,15 +59,17 @@ export function main(req: { url?: string; }, res: {
             res.end(JSON.stringify({
                 users: [...room].filter(v => v[1].joined).map(v => v[0])
             }));
+            console.log('already');
             return;
         }
     }
-    res.writeHead(400, {
+    res.writeHead(404, {
         'Content-Type': 'application/json; charset=UTF-8'
     });
     res.end(JSON.stringify({
         error: '404 not found'
     }));
+    console.log('404');
 };
 
 const websocketSender = (client: WebSocket) => <T extends keyof api['down']>(type: T, payload: api['down'][T]) => {
@@ -76,6 +80,7 @@ const websocketSender = (client: WebSocket) => <T extends keyof api['down']>(typ
 };
 
 export function websocketMain(websocketClient: WebSocket, req: IncomingMessage) {
+    console.log('connected: ', req.url);
     const url = new URL(req.url ?? '/', 'http://localhost/');
     const target = url.pathname.slice(1).split('/');
 
