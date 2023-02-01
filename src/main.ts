@@ -5,11 +5,12 @@ import random from './random';
 
 type api = {
     down: {
-        siglnal: {
+        signal: {
             sender: string;
             data: string;
         };
         users: {
+            me: string;
             users: string[];
         };
         room: {
@@ -17,7 +18,7 @@ type api = {
         };
     };
     up: {
-        siglnal: {
+        signal: {
             receiver: string;
             data: string;
         };
@@ -41,8 +42,9 @@ export function main(req: { url?: string; }, res: {
 }) {
     console.log('accessed: ', req.url);
     const url = new URL(req.url ?? '/', 'http://localhost/');
-    const target = url.pathname.slice(1).split('/');
-    if (target.length === 1 && target[0] === '') {
+    const target = (v => v.at(-1) ? v : v.slice(0, -1))(url.pathname.slice(1).split('/'));
+
+    if (target.length === 0) {
         res.writeHead(302, {
             'Location': topRedirect
         });
@@ -82,9 +84,10 @@ const websocketSender = (client: WebSocket) => <T extends keyof api['down']>(typ
 export function websocketMain(websocketClient: WebSocket, req: IncomingMessage) {
     console.log('connected: ', req.url);
     const url = new URL(req.url ?? '/', 'http://localhost/');
-    const target = url.pathname.slice(1).split('/');
+    const target = (v => v.at(-1) ? v : v.slice(0, -1))(url.pathname.slice(1).split('/'));
 
     const websocketSenderClient = websocketSender(websocketClient);
+    const clientId = random();
 
     const room = (() => {
         if (target.length === 0) {
@@ -106,14 +109,17 @@ export function websocketMain(websocketClient: WebSocket, req: IncomingMessage) 
     })();
 
     if (room === null) {
+        console.log('close:', clientId);
         websocketClient.close();
         return;
     }
-    const clientId = random();
+    console.log('connect:', clientId);
     room.set(clientId, {
         joined: false,
         socket: websocketClient
     });
+
+    console.log(room);
 
     websocketClient.on('message', data => {
         try {
@@ -133,15 +139,19 @@ export function websocketMain(websocketClient: WebSocket, req: IncomingMessage) 
             }>;
             console.log(json);
             switch (json.type) {
-                case 'siglnal': {
+                case 'signal': {
                     if (!json.data) {
                         return;
                     }
+                    console.log('get1: ', json.data);
+                    console.log('room: ', room, 'get: ', json.data?.receiver);
                     const receiverClient = room.get(json.data?.receiver);
+                    console.log('receiverClient: ', receiverClient);
                     if (!receiverClient) {
                         return;
                     }
-                    websocketSender(receiverClient.socket)('siglnal', {
+                    console.log(room);
+                    websocketSender(receiverClient.socket)('signal', {
                         sender: clientId,
                         data: json.data.data
                     });
@@ -149,12 +159,15 @@ export function websocketMain(websocketClient: WebSocket, req: IncomingMessage) 
                 }
                 case 'join': {
                     websocketSenderClient('users', {
+                        me: clientId,
                         users: [...room].filter(v => v[1].joined).map(v => v[0])
                     });
+                    console.log('join: ', clientId);
                     room.set(clientId, {
                         joined: true,
                         socket: websocketClient
                     });
+                    console.log(room);
                     break;
                 }
             }
@@ -168,7 +181,7 @@ export function websocketMain(websocketClient: WebSocket, req: IncomingMessage) 
         pongTimeout = setTimeout(() => {
             websocketClient.close();
         }, 3 * 1000);
-    }, 30 * 1000);
+    }, 300 * 1000);
     websocketClient.once('close', () => {
         if (pongTimeout !== null) {
             clearTimeout(pongTimeout);
@@ -184,7 +197,7 @@ export function start() {
 
     websocketServer.on('connection', websocketMain);
 
-    server.listen('/socket/server.sock', () => {
+    server.listen(10000, () => {
         console.log(`Server running`);
     });
 }
