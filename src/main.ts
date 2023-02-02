@@ -232,7 +232,7 @@ export function start() {
 
     websocketServer.on('connection', websocketMain);
 
-    server.listen(10000, () => {
+    server.listen('/socket/server.sock', () => {
         console.log(`Server running`);
     });
 }
