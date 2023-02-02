@@ -5,20 +5,26 @@ import random from './random';
 
 type api = {
     down: {
-        siglnal: {
+        signal: {
             sender: string;
+            receivers: [string];
             data: string;
         };
         users: {
+            me: string;
             users: string[];
+            event: {
+                type: 'join' | 'leave',
+                user: string;
+            };
         };
         room: {
             id: string;
         };
     };
     up: {
-        siglnal: {
-            receiver: string;
+        signal: {
+            receivers: [string];
             data: string;
         };
         join: {
@@ -39,13 +45,16 @@ export function main(req: { url?: string; }, res: {
     end(value: string): void,
     writeHead(status: number, header: OutgoingHttpHeaders): void;
 }) {
+    console.log('accessed: ', req.url);
     const url = new URL(req.url ?? '/', 'http://localhost/');
-    const target = url.pathname.slice(1).split('/');
+    const target = (v => v.at(-1) ? v : v.slice(0, -1))(url.pathname.slice(1).split('/'));
+
     if (target.length === 0) {
         res.writeHead(302, {
             'Location': topRedirect
         });
         res.end(`See: ${topRedirect}`);
+        console.log('redirect');
         return;
     }
     if (target.length === 1 && target[0]) {
@@ -57,15 +66,17 @@ export function main(req: { url?: string; }, res: {
             res.end(JSON.stringify({
                 users: [...room].filter(v => v[1].joined).map(v => v[0])
             }));
+            console.log('already');
             return;
         }
     }
-    res.writeHead(400, {
+    res.writeHead(404, {
         'Content-Type': 'application/json; charset=UTF-8'
     });
     res.end(JSON.stringify({
         error: '404 not found'
     }));
+    console.log('404');
 };
 
 const websocketSender = (client: WebSocket) => <T extends keyof api['down']>(type: T, payload: api['down'][T]) => {
@@ -76,35 +87,41 @@ const websocketSender = (client: WebSocket) => <T extends keyof api['down']>(typ
 };
 
 export function websocketMain(websocketClient: WebSocket, req: IncomingMessage) {
+    console.log('connected: ', req.url);
     const url = new URL(req.url ?? '/', 'http://localhost/');
-    const target = url.pathname.slice(1).split('/');
+    const target = (v => v.at(-1) ? v : v.slice(0, -1))(url.pathname.slice(1).split('/'));
 
     const websocketSenderClient = websocketSender(websocketClient);
+    const clientId = random();
+    type roomType = (typeof rooms) extends Map<string, infer T> ? T : never;
 
-    const room = (() => {
+    const roomWrapper: [roomType, string] | null = (() => {
         if (target.length === 0) {
             const roomId = random();
-            const room: (typeof rooms) extends Map<string, infer T> ? T : never = new Map();
+            const room: roomType = new Map();
             rooms.set(roomId, room);
             websocketSenderClient('room', {
                 id: roomId
             });
-            return room;
+            console.log('create room: ', roomId, 'owner: ', clientId);
+            return [room, roomId];
         }
         if (target.length === 1 && target[0]) {
             const room = rooms.get(target[0]);
             if (room) {
-                return room;
+                console.log('join room: ', target[0], 'user: ', clientId);
+                return [room, target[0]];
             };
         }
         return null;
     })();
-
-    if (room === null) {
+    if (roomWrapper === null) {
+        console.log('close:', clientId);
         websocketClient.close();
         return;
     }
-    const clientId = random();
+    const [room, roomId] = roomWrapper;
+
     room.set(clientId, {
         joined: false,
         socket: websocketClient
@@ -126,26 +143,45 @@ export function websocketMain(websocketClient: WebSocket, req: IncomingMessage) 
                     data: wsup[P];
                 };
             }>;
-            console.log(json);
+            if (!json) {
+                return;
+            }
+            console.log(clientId, '@', roomId, json);
             switch (json.type) {
-                case 'siglnal': {
+                case 'signal': {
                     if (!json.data) {
                         return;
                     }
-                    const receiverClient = room.get(json.data?.receiver);
-                    if (!receiverClient) {
+                    const receivers = json.data?.receivers;
+                    if (!(receivers && Array.isArray(receivers))) {
                         return;
                     }
-                    websocketSender(receiverClient.socket)('siglnal', {
-                        sender: clientId,
-                        data: json.data.data
-                    });
+                    for (const receiver of receivers) {
+                        const receiverClient = room.get(receiver);
+                        if (!receiverClient) {
+                            return;
+                        }
+                        websocketSender(receiverClient.socket)('signal', {
+                            sender: clientId,
+                            receivers: receivers,
+                            data: json.data.data
+                        });
+                    }
                     break;
                 }
                 case 'join': {
-                    websocketSenderClient('users', {
-                        users: [...room].filter(v => v[1].joined).map(v => v[0])
-                    });
+                    const users = [...room].filter(v => v[1].joined);
+                    for (const user of users) {
+                        websocketSender(user[1].socket)('users', {
+                            me: clientId,
+                            users: users.map(v => v[0]),
+                            event: {
+                                type: 'join',
+                                user: clientId
+                            }
+                        });
+                    }
+                    console.log('join: ', clientId);
                     room.set(clientId, {
                         joined: true,
                         socket: websocketClient
@@ -163,12 +199,29 @@ export function websocketMain(websocketClient: WebSocket, req: IncomingMessage) 
         pongTimeout = setTimeout(() => {
             websocketClient.close();
         }, 3 * 1000);
-    }, 30 * 1000);
+    }, 300 * 1000);
     websocketClient.once('close', () => {
         if (pongTimeout !== null) {
             clearTimeout(pongTimeout);
         }
         clearInterval(interval);
+
+        room.delete(clientId);
+
+        const users = [...room].filter(v => v[1].joined);
+        for (const user of users) {
+            websocketSender(user[1].socket)('users', {
+                me: clientId,
+                users: users.map(v => v[0]),
+                event: {
+                    type: 'leave',
+                    user: clientId
+                }
+            });
+        }
+        if (room.size === 0) {
+            rooms.delete(roomId);
+        }
     });
 }
 
@@ -179,7 +232,7 @@ export function start() {
 
     websocketServer.on('connection', websocketMain);
 
-    server.listen('/socket/server.sock', () => {
+    server.listen(10000, () => {
         console.log(`Server running`);
     });
 }
