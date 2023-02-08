@@ -7,7 +7,7 @@ type api = {
     down: {
         signal: {
             sender: string;
-            receivers: [string];
+            receivers: string[];
             data: string;
         };
         users: {
@@ -24,7 +24,7 @@ type api = {
     };
     up: {
         signal: {
-            receivers: [string];
+            receivers: string[];
             data: string;
         };
         join: {
@@ -170,10 +170,15 @@ export function websocketMain(websocketClient: WebSocket, req: IncomingMessage) 
                     break;
                 }
                 case 'join': {
+                    console.log('join: ', clientId);
+                    room.set(clientId, {
+                        joined: true,
+                        socket: websocketClient
+                    });
                     const users = [...room].filter(v => v[1].joined);
                     for (const user of users) {
                         websocketSender(user[1].socket)('users', {
-                            me: clientId,
+                            me: user[0],
                             users: users.map(v => v[0]),
                             event: {
                                 type: 'join',
@@ -181,11 +186,6 @@ export function websocketMain(websocketClient: WebSocket, req: IncomingMessage) 
                             }
                         });
                     }
-                    console.log('join: ', clientId);
-                    room.set(clientId, {
-                        joined: true,
-                        socket: websocketClient
-                    });
                     break;
                 }
             }
