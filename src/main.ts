@@ -7,7 +7,7 @@ type api = {
     down: {
         signal: {
             sender: string;
-            receivers: [string];
+            receivers: string[];
             data: string;
         };
         users: {
@@ -24,7 +24,7 @@ type api = {
     };
     up: {
         signal: {
-            receivers: [string];
+            receivers: string[];
             data: string;
         };
         join: {
