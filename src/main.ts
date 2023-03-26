@@ -1,7 +1,7 @@
 import http, { IncomingMessage, OutgoingHttpHeaders } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { topRedirect } from './envs';
-import random from './random';
+import random from '@8128-33550336/random';
 
 type api = {
     down: {
@@ -109,6 +109,9 @@ export function websocketMain(websocketClient: WebSocket, req: IncomingMessage) 
         if (target.length === 1 && target[0]) {
             const room = rooms.get(target[0]);
             if (room) {
+                websocketSenderClient('room', {
+                    id: target[0]
+                });
                 console.log('join room: ', target[0], 'user: ', clientId);
                 return [room, target[0]];
             };
