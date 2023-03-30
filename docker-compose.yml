@@ -5,7 +5,7 @@ services:
     build:
       context: .
       args:
-        - NODE_AUTH_TOKEN
+        - NODE_AUTH_TOKEN=$NODE_AUTH_TOKEN
     environment:
       - MICRO_WEBSOCKET_TOP_REDIRECT
     volumes:
