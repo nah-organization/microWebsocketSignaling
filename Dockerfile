@@ -14,7 +14,7 @@ FROM node:18-alpine
 WORKDIR /app/
 
 ARG NODE_AUTH_TOKEN
-COPY package.json /app/
+COPY package.json package-lock.json /app/
 RUN printenv && npm ci --omit=dev --cache /tmp/empty-cache && rm -rf /tmp/empty-cache
 
 COPY --from=build /build/dist /app/dist
